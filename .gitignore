@@ -1,0 +1,22 @@
+# Gradle
+.gradle/
+build/
+**/build/
+
+# Local config
+local.properties
+
+# IDE
+.idea/
+*.iml
+
+# Signing keys / secrets
+keys/
+*.jks
+*.keystore
+*.pem
+*.key
+
+# OS
+.DS_Store
+Thumbs.db
