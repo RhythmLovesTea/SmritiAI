@@ -20,3 +20,4 @@ keys/
 # OS
 .DS_Store
 Thumbs.db
+app/release/*.apk
