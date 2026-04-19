@@ -22,7 +22,13 @@ android {
 
         // Smriti AI - Gemini API Key
         // Replace with your actual API key from https://aistudio.google.com/app/apikey
-        buildConfigField("String", "GEMINI_API_KEY", "\"AIzaSyB-dMtPlybzCo7lhYENsF1WG5LW9RODnNs\"")
+        buildConfigField("String", "GEMINI_API_KEY", "\"${project.findProperty("GEMINI_API_KEY")}\"")
+
+        // Local laptop AI server (FastAPI) base URL (same WiFi).
+        // Example: "http://192.168.1.5:8000/"
+        // For Android Emulator you can use: "http://10.0.2.2:8000/"
+        buildConfigField("String", "LOCAL_AI_BASE_URL", "\"${project.findProperty("LOCAL_AI_BASE_URL")}\"")
+
     }
 
     buildTypes {

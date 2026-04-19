@@ -45,6 +45,7 @@ import com.smritiai.app.data.LocalSummarizationEngine
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
+import java.io.FileOutputStream
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -310,8 +311,10 @@ fun AddPersonScreen(
                             var embedding: FloatArray? = null
                             var qualityScore: Float? = null
                             var enrollmentBitmap: android.graphics.Bitmap? = null
+                            var persistedImagePath: String? = null
                             if (imageUri != null) {
                                 try {
+                                    persistedImagePath = persistImageToInternalStorage(context, imageUri!!)
                                     val istream = context.contentResolver.openInputStream(imageUri!!)
                                     val bitmap = BitmapFactory.decodeStream(istream)
                                     enrollmentBitmap = bitmap
@@ -343,7 +346,7 @@ fun AddPersonScreen(
                                 name = name,
                                 relationship = relationship,
                                 summary = summary.takeIf { it != "No speech detected" } ?: "",
-                                imagePath = null,
+                                imagePath = persistedImagePath,
                                 audioPath = null,
                                 faceEmbedding = embedding,
                                 faceEmbeddingQuality = qualityScore,
@@ -392,6 +395,19 @@ fun AddPersonScreen(
             Spacer(modifier = Modifier.height(32.dp))
         }
     }
+}
+
+private fun persistImageToInternalStorage(context: android.content.Context, uri: Uri): String? {
+    return runCatching {
+        val dir = File(context.filesDir, "person_photos").apply { mkdirs() }
+        val outFile = File(dir, "person_${System.currentTimeMillis()}.jpg")
+        context.contentResolver.openInputStream(uri)?.use { input ->
+            FileOutputStream(outFile).use { output ->
+                input.copyTo(output)
+            }
+        } ?: return null
+        Uri.fromFile(outFile).toString()
+    }.getOrNull()
 }
 
 private fun buildEnrollmentRects(w: Int, h: Int): List<Rect> {

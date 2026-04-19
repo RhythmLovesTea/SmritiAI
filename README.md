@@ -122,3 +122,22 @@ SmritiAI is a supportive tool and not a replacement for professional medical car
 ## Author
 
 Built with purpose by RhythmLovesTea.
+
+---
+
+## Hackathon Phase 1 (Local Laptop AI)
+
+This repo includes a **local FastAPI + Ollama server** for same-WiFi chat:
+
+- Server code: `server/README.md:1`
+- Android base URL: `app/build.gradle.kts:1` (`BuildConfig.LOCAL_AI_BASE_URL`)
+
+**Required permissions**
+- `INTERNET`, `RECORD_AUDIO`, `CAMERA` (`app/src/main/AndroidManifest.xml:1`)
+
+**Demo flow**
+1. Start laptop server (`server/README.md:1`)
+2. Put phone + laptop on same WiFi
+3. Set `LOCAL_AI_BASE_URL` to laptop IP (example: `http://192.168.1.5:8000/`)
+4. In app: `Ask Smriti AI` → tap mic → speak a question
+5. For “Who is this?”-style queries, the app opens a camera flow and sends recognized context to the laptop server

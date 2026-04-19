@@ -26,6 +26,10 @@ class MemoryRepository(private val memoryDao: MemoryDao) {
         return memoryDao.findByName(name)
     }
 
+    suspend fun getMemoryById(id: String): PersonMemory? {
+        return memoryDao.getMemoryById(id)
+    }
+
     suspend fun deleteMemory(memory: PersonMemory) {
         memoryDao.deleteMemory(memory)
     }

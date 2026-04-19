@@ -1,5 +1,13 @@
 package com.smritiai.app.ui.screens
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Bundle
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
+import android.speech.tts.TextToSpeech
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -12,9 +20,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.Image
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -29,7 +41,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import androidx.compose.ui.platform.LocalContext
 import com.smritiai.app.data.model.ChatMessage
+import com.smritiai.app.viewmodel.ChatEvent
 import com.smritiai.app.viewmodel.ChatUiState
 import com.smritiai.app.viewmodel.SmritiChatState
 import com.smritiai.app.viewmodel.SmritiChatViewModel
@@ -53,10 +68,91 @@ private val SUGGESTIONS = listOf(
 @Composable
 fun SmritiChatScreen(
     viewModel: SmritiChatViewModel,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    onRequestFaceRecognition: (String) -> Unit
 ) {
+    val context = LocalContext.current
     val state by viewModel.state.collectAsState()
     val listState = rememberLazyListState()
+
+    // ── Voice input (SpeechRecognizer) ────────────────────────────────────────
+    var isListening by remember { mutableStateOf(false) }
+    val speechRecognizer = remember { SpeechRecognizer.createSpeechRecognizer(context) }
+    val audioPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            }
+            isListening = true
+            speechRecognizer.startListening(intent)
+        }
+    }
+
+    DisposableEffect(Unit) {
+        val listener = object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) {}
+            override fun onBeginningOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() {}
+            override fun onError(error: Int) {
+                isListening = false
+            }
+            override fun onResults(results: Bundle?) {
+                isListening = false
+                val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                val text = matches?.firstOrNull()?.trim().orEmpty()
+                if (text.isNotBlank()) {
+                    viewModel.onInputChange(text)
+                    viewModel.sendMessage()
+                }
+            }
+            override fun onPartialResults(partialResults: Bundle?) {}
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        }
+        speechRecognizer.setRecognitionListener(listener)
+        onDispose {
+            speechRecognizer.destroy()
+        }
+    }
+
+    // ── Text-to-Speech for assistant replies ─────────────────────────────────
+    var tts by remember { mutableStateOf<TextToSpeech?>(null) }
+    var lastSpokenMessageId by remember { mutableStateOf<String?>(null) }
+    DisposableEffect(context) {
+        val engine = TextToSpeech(context) { }
+        engine.language = Locale.US
+        tts = engine
+        onDispose {
+            engine.stop()
+            engine.shutdown()
+        }
+    }
+
+    LaunchedEffect(state.uiState) {
+        val messages = when (val ui = state.uiState) {
+            is ChatUiState.Ready -> ui.messages
+            is ChatUiState.Error -> ui.messages
+            else -> emptyList()
+        }
+        val lastBot = messages.lastOrNull { !it.isFromUser }
+        if (lastBot != null && lastBot.id != lastSpokenMessageId) {
+            lastSpokenMessageId = lastBot.id
+            tts?.speak(lastBot.content, TextToSpeech.QUEUE_FLUSH, null, lastBot.id)
+        }
+    }
+
+    // ── Face-recognition request events ──────────────────────────────────────
+    LaunchedEffect(Unit) {
+        viewModel.events.collect { event ->
+            when (event) {
+                is ChatEvent.RequestFaceRecognition -> onRequestFaceRecognition(event.query)
+            }
+        }
+    }
 
     LaunchedEffect(state.uiState) {
         if (state.uiState is ChatUiState.Ready || state.uiState is ChatUiState.Error) {
@@ -159,6 +255,27 @@ fun SmritiChatScreen(
                 inputText = state.inputText,
                 onInputChange = viewModel::onInputChange,
                 onSend = viewModel::sendMessage,
+                onMic = {
+                    if (isListening) {
+                        speechRecognizer.stopListening()
+                        isListening = false
+                        return@ChatInput
+                    }
+
+                    val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+                        PackageManager.PERMISSION_GRANTED
+                    if (granted) {
+                        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                        }
+                        isListening = true
+                        speechRecognizer.startListening(intent)
+                    } else {
+                        audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    }
+                },
+                isListening = isListening,
                 isLoading = state.isLoading,
                 modifier = Modifier.padding(16.dp)
             )
@@ -397,8 +514,11 @@ private fun SmritiAvatar(
         Image(
             painter = painterResource(id = com.smritiai.app.R.drawable.smriti_assistant),
             contentDescription = "Smriti AI",
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize().clip(CircleShape)
+            contentScale = ContentScale.Fit,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(2.dp)
+                .clip(CircleShape)
         )
     }
 }
@@ -452,6 +572,8 @@ private fun ChatInput(
     inputText: String,
     onInputChange: (String) -> Unit,
     onSend: () -> Unit,
+    onMic: () -> Unit,
+    isListening: Boolean,
     isLoading: Boolean,
     modifier: Modifier = Modifier
 ) {
@@ -462,6 +584,17 @@ private fun ChatInput(
             .padding(horizontal = 8.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        IconButton(
+            onClick = onMic,
+            enabled = !isLoading
+        ) {
+            Icon(
+                imageVector = if (isListening) Icons.Default.Stop else Icons.Default.Mic,
+                contentDescription = if (isListening) "Stop listening" else "Start voice input",
+                tint = if (isListening) Color(0xFFFF3B30) else Color(0xFF007AFF)
+            )
+        }
+
         TextField(
             value = inputText,
             onValueChange = onInputChange,

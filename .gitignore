@@ -21,3 +21,8 @@ keys/
 .DS_Store
 Thumbs.db
 app/release/*.apk
+local.properties
+*.keystore
+*.jks
+.env
+*.properties

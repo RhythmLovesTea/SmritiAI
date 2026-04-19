@@ -19,6 +19,9 @@ interface MemoryDao {
     @Query("SELECT * FROM persons WHERE name LIKE :query LIMIT 1")
     suspend fun findByName(query: String): PersonMemory?
 
+    @Query("SELECT * FROM persons WHERE id = :id LIMIT 1")
+    suspend fun getMemoryById(id: String): PersonMemory?
+
     @Query("SELECT * FROM persons")
     suspend fun getAllMemoriesSync(): List<PersonMemory>
 
